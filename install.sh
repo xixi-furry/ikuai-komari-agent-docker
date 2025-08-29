@@ -43,11 +43,9 @@ check_system() {
     source /etc/os-release
     if [[ "$ID" != "debian" && "$ID" != "ubuntu" && "$ID" != "centos" && "$ID" != "rhel" ]]; then
         echo -e "${YELLOW}警告: 此脚本主要支持Debian/Ubuntu/CentOS系统${NC}"
-        read -p "是否继续? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
+        echo -e "${YELLOW}当前系统: $ID${NC}"
+        echo -e "${YELLOW}如果遇到问题，请手动安装依赖包${NC}"
+        echo ""
     fi
 }
 
@@ -415,7 +413,8 @@ main() {
             check_system
             while true; do
                 show_menu
-                read -p "请输入选择 (1-3): " choice
+                read -r -p "请输入选择 (1-3): " choice
+                choice=$(echo "$choice" | tr -d '[:space:]')  # 移除空白字符
                 case $choice in
                     1)
                         main_install
