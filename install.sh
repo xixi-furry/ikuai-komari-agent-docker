@@ -251,15 +251,6 @@ get_config_info() {
     echo "安装路径: ${INSTALL_PATH}"
     echo ""
     
-    read -p "确认安装? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}安装已取消${NC}"
-        exit 0
-    fi
-    
-    echo ""
-    
     create_venv
     copy_files
     install_python_deps
@@ -278,8 +269,17 @@ main_install() {
     show_title
     echo -e "${BLUE}开始一键安装iKuai Komari监控代理...${NC}"
     echo ""
+    echo -e "${YELLOW}此脚本将:${NC}"
+    echo "1. 安装系统依赖"
+    echo "2. 从GitHub下载最新代码"
+    echo "3. 创建Python虚拟环境"
+    echo "4. 安装Python依赖"
+    echo "5. 配置iKuai和Komari连接"
+    echo "6. 创建systemd服务"
+    echo "7. 启动监控服务"
+    echo ""
     
-    read -p "确认从GitHub下载并安装? (y/N): " -n 1 -r
+    read -p "确认开始安装? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${YELLOW}安装已取消${NC}"
