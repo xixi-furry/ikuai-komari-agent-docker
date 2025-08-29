@@ -148,57 +148,11 @@ class IkuaiAgent:
             logger.error(f"获取ikuai数据异常: {e}")
             return {}
     
-    def get_local_system_info(self) -> Dict[str, Any]:
-        """获取本地系统信息作为备用"""
-        try:
-            # CPU信息
-            cpu_info = {
-                "cpu_name": platform.processor(),
-                "cpu_cores": psutil.cpu_count(logical=False),
-                "cpu_threads": psutil.cpu_count(logical=True)
-            }
-            
-            # 内存信息
-            memory = psutil.virtual_memory()
-            memory_info = {
-                "mem_total": memory.total,
-                "mem_used": memory.used,
-                "mem_available": memory.available
-            }
-            
-            # 磁盘信息
-            try:
-                disk = psutil.disk_usage('/')
-                disk_info = {
-                    "disk_total": disk.total,
-                    "disk_used": disk.used,
-                    "disk_free": disk.free
-                }
-            except:
-                disk_info = {"disk_total": 0, "disk_used": 0, "disk_free": 0}
-            
-            # 网络信息
-            network = psutil.net_io_counters()
-            network_info = {
-                "network_up": network.bytes_sent,
-                "network_down": network.bytes_recv
-            }
-            
-            return {
-                "cpu": cpu_info,
-                "memory": memory_info,
-                "disk": disk_info,
-                "network": network_info
-            }
-        except Exception as e:
-            logger.error(f"获取本地系统信息异常: {e}")
-            return {}
+
     
     def format_basic_info(self) -> Dict[str, Any]:
         """格式化基础信息上报数据"""
-        # 优先使用ikuai数据，备用本地数据
         ikuai_data = self.get_ikuai_data()
-        local_info = self.get_local_system_info()
         
         ipv4 = self.get_public_ip_from_ikuai()
         
@@ -213,11 +167,27 @@ class IkuaiAgent:
         sys_info = ikuai_data.get("system", {})
         verinfo = sys_info.get("verinfo", {})
         
+        # 尝试从homepage API获取版本信息
+        try:
+            homepage_data = self.ikuai_client.get_homepage_stats()
+            if homepage_data and "sysstat" in homepage_data:
+                homepage_verinfo = homepage_data["sysstat"].get("verinfo", {})
+                if homepage_verinfo:
+                    verinfo = homepage_verinfo
+                    logger.debug(f"从homepage获取到版本信息: {verinfo}")
+        except Exception as e:
+            logger.error(f"获取homepage版本信息失败: {e}")
+        
+        logger.debug(f"iKuai系统信息: {sys_info}")
+        logger.debug(f"iKuai版本信息: {verinfo}")
+        
         ikuai_version = verinfo.get("verstring", "")
         if ikuai_version:
             os_info = f"iKuai ({ikuai_version})"
         else:
             os_info = "iKuai"
+        
+        logger.debug(f"最终操作系统信息: {os_info}")
         
         mem_total_bytes = 0
         try:
@@ -231,7 +201,7 @@ class IkuaiAgent:
                 if hw_info.get("memory"):
                     mem_total_bytes = hw_info.get("memory") * 1024 * 1024
                 else:
-                    mem_total_bytes = local_info.get("memory", {}).get("mem_total", 0)
+                    mem_total_bytes = 0
         except Exception as e:
             logger.error(f"获取内存数据失败: {e}")
             if hw_info.get("memory"):
@@ -249,14 +219,14 @@ class IkuaiAgent:
                     disk_gb = float(match.group(1))
                     disk_total_bytes = int(disk_gb * 1024 * 1024 * 1024)
             except:
-                disk_total_bytes = local_info.get("disk", {}).get("disk_total", 0)
+                disk_total_bytes = 0
         else:
-            disk_total_bytes = local_info.get("disk", {}).get("disk_total", 0)
+            disk_total_bytes = 0
         
         basic_info = {
             "arch": platform.machine(),
-            "cpu_cores": hw_info.get("cpucores", local_info.get("cpu", {}).get("cpu_cores", 0)),
-            "cpu_name": hw_info.get("cpumodel", local_info.get("cpu", {}).get("cpu_name", "Unknown")),
+            "cpu_cores": hw_info.get("cpucores", 0),
+            "cpu_name": hw_info.get("cpumodel", "Unknown"),
             "disk_total": disk_total_bytes,
             "gpu_name": "Unknown",
             "ipv4": ipv4,
@@ -274,7 +244,6 @@ class IkuaiAgent:
     def format_monitoring_data(self) -> Dict[str, Any]:
         """格式化实时监控数据"""
         ikuai_data = self.get_ikuai_data()
-        local_info = self.get_local_system_info()
         
         cpu_usage = 0
         sys_stats = ikuai_data.get("system", {})
@@ -318,9 +287,8 @@ class IkuaiAgent:
                     mem_total_bytes = 0
                     mem_used_bytes = 0
             else:
-                mem_info = local_info.get("memory", {})
-                mem_total_bytes = mem_info.get("mem_total", 0)
-                mem_used_bytes = mem_info.get("mem_used", 0)
+                mem_total_bytes = 0
+                mem_used_bytes = 0
         except Exception as e:
             logger.error(f"获取内存数据失败: {e}")
             mem_total_bytes = 3 * 1024 * 1024 * 1024
@@ -349,11 +317,10 @@ class IkuaiAgent:
                     net_up_rate = int(net_up / 3)
                     net_down_rate = int(net_down / 3)
                 else:
-                    net_info = local_info.get("network", {})
-                    net_up = net_info.get("network_up", 0)
-                    net_down = net_info.get("network_down", 0)
-                    net_total_up = net_up
-                    net_total_down = net_down
+                    net_up = 0
+                    net_down = 0
+                    net_total_up = 0
+                    net_total_down = 0
                     net_up_rate = 0
                     net_down_rate = 0
         except Exception as e:
@@ -368,11 +335,10 @@ class IkuaiAgent:
                 net_up_rate = int(net_up / 3)
                 net_down_rate = int(net_down / 3)
             else:
-                net_info = local_info.get("network", {})
-                net_up = net_info.get("network_up", 0)
-                net_down = net_info.get("network_down", 0)
-                net_total_up = net_up
-                net_total_down = net_down
+                net_up = 0
+                net_down = 0
+                net_total_up = 0
+                net_total_down = 0
                 net_up_rate = 0
                 net_down_rate = 0
         
@@ -388,7 +354,7 @@ class IkuaiAgent:
             tcp_connections = 0
             udp_connections = 0
         
-        disk_info = local_info.get("disk", {})
+        disk_info = {}
         
         try:
             ikuai_disk_stats = self.ikuai_client.get_disk_usage_stats()
@@ -411,9 +377,9 @@ class IkuaiAgent:
                             disk_gb = float(match.group(1))
                             ikuai_disk_total = int(disk_gb * 1024 * 1024 * 1024)
                     except:
-                        ikuai_disk_total = disk_info.get("disk_total", 0)
+                        ikuai_disk_total = 0
                 else:
-                    ikuai_disk_total = disk_info.get("disk_total", 0)
+                    ikuai_disk_total = 0
                 
                 ikuai_disk_used = int(ikuai_disk_total * 0.2)
                 
