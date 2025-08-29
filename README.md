@@ -17,39 +17,131 @@
 
 ## 🚀 快速开始
 
-### 一键安装（推荐）
-
-```bash
-# 下载并运行一键安装脚本
-curl -fsSL https://raw.githubusercontent.com/ZeroTwoDa/ikuai-komari-agent/main/install.sh | sudo bash
-```
-- **iKuai地址**: 如 `http://192.168.1.1`
-- **iKuai用户名**: 如 `komari_user`
-- **iKuai密码**: 输入密码（不会显示）
-- **Komari服务器地址**: 如 `https://komari.server.com`
-- **Komari认证令牌**: 输入认证令牌
-
-#### 自动安装过程
-
-脚本会自动执行以下步骤：
-
-1. ✅ 检查系统类型和权限
-2. ✅ 安装系统依赖（Python3、pip、venv等）
-3. ✅ 创建Python虚拟环境
-4. ✅ 复制程序文件到 `/opt/ikuai_Komari_agent`
-5. ✅ 安装Python依赖包
-6. ✅ 创建配置文件
-7. ✅ 创建systemd服务
-8. ✅ 启动服务并验证
-
-
 ### 手动安装
 
-1. **下载ikuai_komari_agent.py ikuai_client.py config.py到服务器文件目录中**
+## 1. 安装系统依赖
 
-2. **修改config.py文件中的配置项**
+### Debian/Ubuntu
+```bash
+sudo apt-get update
+sudo apt-get install -y curl unzip python3 python3-pip python3-venv
+```
 
-3. **安装系统依赖 创建虚拟环境并运行 使用systemd服务保活**
+### CentOS/RHEL
+```bash
+sudo yum install -y curl unzip python3 python3-pip python3-venv
+```
+
+## 2. 下载项目文件
+
+```bash
+cd /tmp
+curl -L -o ikuai-komari-agent.zip https://github.com/ZeroTwoDa/ikuai-komari-agent/archive/refs/heads/main.zip
+unzip ikuai-komari-agent.zip
+cd ikuai-komari-agent-main
+```
+
+## 3. 创建安装目录
+
+```bash
+sudo mkdir -p /opt/ikuai_Komari_agent
+```
+
+## 4. 创建Python虚拟环境
+
+```bash
+sudo python3 -m venv /opt/ikuai_Komari_agent/venv
+```
+
+## 5. 复制程序文件
+
+```bash
+sudo cp ikuai_komari_agent.py /opt/ikuai_Komari_agent/
+sudo cp ikuai_client.py /opt/ikuai_Komari_agent/
+sudo cp config.py /opt/ikuai_Komari_agent/
+sudo chmod +x /opt/ikuai_Komari_agent/ikuai_komari_agent.py
+sudo chown -R root:root /opt/ikuai_Komari_agent
+```
+
+## 6. 安装Python依赖
+
+```bash
+sudo /opt/ikuai_Komari_agent/venv/bin/pip install --upgrade pip
+sudo /opt/ikuai_Komari_agent/venv/bin/pip install requests websocket-client psutil
+```
+
+## 7. 配置连接信息
+
+编辑配置文件：
+```bash
+sudo nano /opt/ikuai_Komari_agent/config.py
+```
+
+修改以下配置：
+```python
+# iKuai路由器配置
+IKUAI_CONFIG = {
+    "base_url": "http://192.168.1.1",  # 修改为你的iKuai地址
+    "username": "admin",               # 修改为你的用户名
+    "password": "password",            # 修改为你的密码
+    "timeout": 10
+}
+
+# Komari服务器配置
+KOMARI_CONFIG = {
+    "endpoint": "https://komari.server.com",  # 修改为你的Komari服务器地址
+    "token": "your_token",                    # 修改为你的认证令牌
+    "websocket_interval": 1.0,
+    "basic_info_interval": 5,
+    "ignore_unsafe_cert": False
+}
+```
+
+## 8. 创建systemd服务
+
+```bash
+sudo tee /etc/systemd/system/ikuai_Komari_agent.service > /dev/null << EOF
+[Unit]
+Description=iKuai Komari Monitoring Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ikuai_Komari_agent
+ExecStart=/opt/ikuai_Komari_agent/venv/bin/python /opt/ikuai_Komari_agent/ikuai_komari_agent.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+## 9. 启动服务
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable ikuai_Komari_agent
+sudo systemctl start ikuai_Komari_agent
+```
+
+## 10. 检查服务状态
+
+```bash
+sudo systemctl status ikuai_Komari_agent
+sudo journalctl -u ikuai_Komari_agent -f
+```
+
+## 11. 卸载命令
+
+```bash
+sudo systemctl stop ikuai_Komari_agent
+sudo systemctl disable ikuai_Komari_agent
+sudo rm /etc/systemd/system/ikuai_Komari_agent.service
+sudo systemctl daemon-reload
+sudo rm -rf /opt/ikuai_Komari_agent
+``` 
 
 ## 📋 系统要求
 
