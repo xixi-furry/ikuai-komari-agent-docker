@@ -418,11 +418,11 @@ main() {
                 case $choice in
                     1)
                         main_install
-                        break
+                        exit 0
                         ;;
                     2)
                         uninstall_agent
-                        break
+                        exit 0
                         ;;
                     3)
                         echo -e "${BLUE}退出安装程序${NC}"
