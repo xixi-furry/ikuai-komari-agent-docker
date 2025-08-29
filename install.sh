@@ -52,21 +52,55 @@ check_system() {
 }
 
 install_dependencies() {
-    echo -e "${BLUE}安装系统依赖...${NC}"
+    echo -e "${BLUE}检查系统依赖...${NC}"
     
+    # 检测包管理器
+    local pkg_manager=""
     if command -v apt-get &> /dev/null; then
-        apt-get update
-        apt-get install -y curl wget unzip python3 python3-pip python3-venv
+        pkg_manager="apt-get"
     elif command -v yum &> /dev/null; then
-        yum install -y curl wget unzip python3 python3-pip python3-venv
+        pkg_manager="yum"
     elif command -v dnf &> /dev/null; then
-        dnf install -y curl wget unzip python3 python3-pip python3-venv
+        pkg_manager="dnf"
     else
         echo -e "${RED}错误: 不支持的包管理器${NC}"
         exit 1
     fi
     
-    echo -e "${GREEN}系统依赖安装完成${NC}"
+    # 需要检查的包列表
+    local packages=("unzip" "python3" "python3-pip" "python3-venv")
+    local missing_packages=()
+    
+    echo -e "${BLUE}检查已安装的包...${NC}"
+    
+    for package in "${packages[@]}"; do
+        if command -v "$package" &> /dev/null; then
+            echo -e "${GREEN}✓ $package 已安装${NC}"
+        else
+            echo -e "${YELLOW}✗ $package 未安装${NC}"
+            missing_packages+=("$package")
+        fi
+    done
+    
+    # 如果有缺失的包，则安装
+    if [[ ${#missing_packages[@]} -gt 0 ]]; then
+        echo -e "${BLUE}安装缺失的包...${NC}"
+        
+        if [[ "$pkg_manager" == "apt-get" ]]; then
+            apt-get update
+            apt-get install -y "${missing_packages[@]}"
+        elif [[ "$pkg_manager" == "yum" ]]; then
+            yum install -y "${missing_packages[@]}"
+        elif [[ "$pkg_manager" == "dnf" ]]; then
+            dnf install -y "${missing_packages[@]}"
+        fi
+        
+        echo -e "${GREEN}缺失的包安装完成${NC}"
+    else
+        echo -e "${GREEN}所有依赖包已安装${NC}"
+    fi
+    
+    echo -e "${GREEN}系统依赖检查完成${NC}"
 }
 
 download_project() {
@@ -278,8 +312,10 @@ main_install() {
     echo "6. 创建systemd服务"
     echo "7. 启动监控服务"
     echo ""
+    echo -e "${YELLOW}注意: 按回车键取消安装，输入 y 或 Y 确认安装${NC}"
+    echo ""
     
-    read -p "确认开始安装? (y/N): " -n 1 -r
+    read -p "确认开始安装? (输入 y 确认，回车取消): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${YELLOW}安装已取消${NC}"
