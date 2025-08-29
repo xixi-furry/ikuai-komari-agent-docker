@@ -1,22 +1,23 @@
 #!/bin/bash
 
 # iKuai Komari 监控代理 v1.0 一键安装脚本
-# 从GitHub下载并自动部署
 
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-
+# GitHub仓库信息
 GITHUB_REPO="ZeroTwoDa/ikuai-komari-agent"
 GITHUB_BRANCH="main"
 DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${GITHUB_BRANCH}.zip"
 TEMP_DIR="/tmp/ikuai_komari_agent_install"
+INSTALL_PATH="/opt/ikuai_Komari_agent"
+SERVICE_NAME="ikuai_Komari_agent"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
-# 显示标题
 show_title() {
     clear
     echo -e "${BLUE}========================================${NC}"
@@ -25,7 +26,6 @@ show_title() {
     echo ""
 }
 
-# 检查是否为root用户
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         echo -e "${RED}错误: 此脚本需要root权限运行${NC}"
@@ -34,7 +34,6 @@ check_root() {
     fi
 }
 
-# 检查系统类型
 check_system() {
     if [[ ! -f /etc/os-release ]]; then
         echo -e "${RED}错误: 无法检测系统类型${NC}"
@@ -52,19 +51,15 @@ check_system() {
     fi
 }
 
-# 安装系统依赖
 install_dependencies() {
     echo -e "${BLUE}安装系统依赖...${NC}"
     
     if command -v apt-get &> /dev/null; then
-        # Debian/Ubuntu
         apt-get update
         apt-get install -y curl wget unzip python3 python3-pip python3-venv
     elif command -v yum &> /dev/null; then
-        # CentOS/RHEL
         yum install -y curl wget unzip python3 python3-pip python3-venv
     elif command -v dnf &> /dev/null; then
-        # Fedora
         dnf install -y curl wget unzip python3 python3-pip python3-venv
     else
         echo -e "${RED}错误: 不支持的包管理器${NC}"
@@ -74,15 +69,12 @@ install_dependencies() {
     echo -e "${GREEN}系统依赖安装完成${NC}"
 }
 
-# 下载项目文件
 download_project() {
     echo -e "${BLUE}从GitHub下载项目文件...${NC}"
     
-    # 创建临时目录
     mkdir -p "${TEMP_DIR}"
     cd "${TEMP_DIR}"
     
-    # 下载项目
     echo -e "${BLUE}下载地址: ${GITHUB_REPO}${NC}"
     if curl -L -o project.zip "${DOWNLOAD_URL}"; then
         echo -e "${GREEN}下载完成${NC}"
@@ -91,12 +83,10 @@ download_project() {
         exit 1
     fi
     
-    # 解压文件
     echo -e "${BLUE}解压文件...${NC}"
     unzip -q project.zip
     rm project.zip
     
-    # 查找项目目录
     PROJECT_DIR=$(find . -name "ikuai-komari-agent-*" -type d | head -1)
     if [[ -z "$PROJECT_DIR" ]]; then
         echo -e "${RED}错误: 无法找到项目目录${NC}"
@@ -107,27 +97,183 @@ download_project() {
     echo -e "${GREEN}项目文件准备完成${NC}"
 }
 
-# 运行部署脚本
-run_deploy_script() {
-    echo -e "${BLUE}运行部署脚本...${NC}"
+create_venv() {
+    echo -e "${BLUE}创建Python虚拟环境...${NC}"
     
-    if [[ -f "deploy.sh" ]]; then
-        chmod +x deploy.sh
-        ./deploy.sh
+    if [[ -d "${INSTALL_PATH}" ]]; then
+        echo -e "${YELLOW}安装目录已存在，正在备份...${NC}"
+        mv "${INSTALL_PATH}" "${INSTALL_PATH}.backup.$(date +%Y%m%d_%H%M%S)"
+    fi
+    
+    mkdir -p "${INSTALL_PATH}"
+    python3 -m venv "${INSTALL_PATH}/venv"
+    
+    echo -e "${GREEN}虚拟环境创建完成${NC}"
+}
+
+copy_files() {
+    echo -e "${BLUE}复制程序文件...${NC}"
+    
+    cp ikuai_komari_agent.py "${INSTALL_PATH}/"
+    cp ikuai_client.py "${INSTALL_PATH}/"
+    cp config.py "${INSTALL_PATH}/"
+    cp README.md "${INSTALL_PATH}/"
+    
+    chmod +x "${INSTALL_PATH}/ikuai_komari_agent.py"
+    chown -R root:root "${INSTALL_PATH}"
+    
+    echo -e "${GREEN}文件复制完成${NC}"
+}
+
+install_python_deps() {
+    echo -e "${BLUE}安装Python依赖...${NC}"
+    
+    source "${INSTALL_PATH}/venv/bin/activate"
+    pip install --upgrade pip
+    pip install requests websocket-client psutil
+    
+    echo -e "${GREEN}Python依赖安装完成${NC}"
+}
+
+create_config() {
+    local ikuai_url=$1
+    local ikuai_username=$2
+    local ikuai_password=$3
+    local komari_endpoint=$4
+    local komari_token=$5
+    
+    echo -e "${BLUE}创建配置文件...${NC}"
+    
+    cat > "${INSTALL_PATH}/config.py" << EOF
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+iKuai连接配置信息
+"""
+
+# iKuai路由器配置
+IKUAI_CONFIG = {
+    "base_url": "${ikuai_url}",
+    "username": "${ikuai_username}",
+    "password": "${ikuai_password}",
+    "timeout": 10
+}
+
+# Komari服务器配置
+KOMARI_CONFIG = {
+    "endpoint": "${komari_endpoint}",
+    "token": "${komari_token}",
+    "websocket_interval": 1.0,
+    "basic_info_interval": 5,
+    "ignore_unsafe_cert": False
+}
+
+# 日志配置
+LOGGING_CONFIG = {
+    "level": "WARNING",
+    "file": "${INSTALL_PATH}/ikuai_agent.log",
+    "max_bytes": 10485760,
+    "backup_count": 3
+}
+EOF
+    
+    echo -e "${GREEN}配置文件创建完成${NC}"
+}
+
+create_service() {
+    echo -e "${BLUE}创建systemd服务...${NC}"
+    
+    cat > "${SERVICE_FILE}" << EOF
+[Unit]
+Description=iKuai Komari Monitoring Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${INSTALL_PATH}
+ExecStart=${INSTALL_PATH}/venv/bin/python ${INSTALL_PATH}/ikuai_komari_agent.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    systemctl daemon-reload
+    systemctl enable "${SERVICE_NAME}"
+    
+    echo -e "${GREEN}systemd服务创建完成${NC}"
+}
+
+start_service() {
+    echo -e "${BLUE}启动服务...${NC}"
+    
+    systemctl start "${SERVICE_NAME}"
+    
+    if systemctl is-active --quiet "${SERVICE_NAME}"; then
+        echo -e "${GREEN}服务启动成功${NC}"
+        echo -e "${BLUE}服务状态:${NC}"
+        systemctl status "${SERVICE_NAME}" --no-pager -l
     else
-        echo -e "${RED}错误: 未找到deploy.sh脚本${NC}"
+        echo -e "${RED}服务启动失败${NC}"
+        echo -e "${BLUE}查看日志:${NC}"
+        journalctl -u "${SERVICE_NAME}" --no-pager -l
         exit 1
     fi
 }
 
-# 清理临时文件
+get_config_info() {
+    echo -e "${YELLOW}请输入配置信息:${NC}"
+    echo ""
+    
+    read -p "iKuai地址 (如 http://192.168.1.1): " ikuai_url
+    ikuai_url=${ikuai_url:-"http://192.168.1.1"}
+    
+    read -p "iKuai用户名 (默认: admin): " ikuai_username
+    ikuai_username=${ikuai_username:-"admin"}
+    
+    read -s -p "iKuai密码: " ikuai_password
+    echo
+    
+    read -p "Komari服务器地址 (如 https://komari.server.com): " komari_endpoint
+    komari_endpoint=${komari_endpoint:-"https://komari.server.com"}
+    
+    read -p "Komari认证令牌: " komari_token
+    
+    echo ""
+    echo -e "${YELLOW}配置信息确认:${NC}"
+    echo "iKuai地址: ${ikuai_url}"
+    echo "iKuai用户名: ${ikuai_username}"
+    echo "Komari服务器: ${komari_endpoint}"
+    echo "安装路径: ${INSTALL_PATH}"
+    echo ""
+    
+    read -p "确认安装? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}安装已取消${NC}"
+        exit 0
+    fi
+    
+    echo ""
+    
+    create_venv
+    copy_files
+    install_python_deps
+    create_config "$ikuai_url" "$ikuai_username" "$ikuai_password" "$komari_endpoint" "$komari_token"
+    create_service
+    start_service
+}
+
 cleanup() {
     echo -e "${BLUE}清理临时文件...${NC}"
     rm -rf "${TEMP_DIR}"
     echo -e "${GREEN}清理完成${NC}"
 }
 
-# 主安装流程
 main_install() {
     show_title
     echo -e "${BLUE}开始一键安装iKuai Komari监控代理...${NC}"
@@ -142,10 +288,9 @@ main_install() {
     
     echo ""
     
-    # 执行安装步骤
     install_dependencies
     download_project
-    run_deploy_script
+    get_config_info
     cleanup
     
     echo ""
@@ -153,15 +298,18 @@ main_install() {
     echo -e "${GREEN}    iKuai Komari 监控代理一键安装完成!${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo ""
-    echo -e "${BLUE}服务管理命令:${NC}"
-    echo "查看状态: systemctl status ikuai_Komari_agent"
-    echo "启动服务: systemctl start ikuai_Komari_agent"
-    echo "停止服务: systemctl stop ikuai_Komari_agent"
-    echo "查看日志: journalctl -u ikuai_Komari_agent -f"
+    echo -e "${BLUE}安装路径: ${INSTALL_PATH}${NC}"
+    echo -e "${BLUE}服务名称: ${SERVICE_NAME}${NC}"
+    echo -e "${BLUE}日志文件: ${INSTALL_PATH}/ikuai_agent.log${NC}"
+    echo ""
+    echo -e "${YELLOW}常用命令:${NC}"
+    echo "启动服务: systemctl start ${SERVICE_NAME}"
+    echo "停止服务: systemctl stop ${SERVICE_NAME}"
+    echo "查看状态: systemctl status ${SERVICE_NAME}"
+    echo "查看日志: journalctl -u ${SERVICE_NAME} -f"
     echo ""
 }
 
-# 显示帮助信息
 show_help() {
     echo -e "${BLUE}iKuai Komari 监控代理一键安装脚本${NC}"
     echo ""
@@ -177,12 +325,10 @@ show_help() {
     echo ""
 }
 
-# 显示版本信息
 show_version() {
     echo -e "${BLUE}iKuai Komari 监控代理 v1.0${NC}"
 }
 
-# 主程序
 main() {
     case "${1:-}" in
         -h|--help)
@@ -206,5 +352,4 @@ main() {
     esac
 }
 
-# 运行主程序
 main "$@" 
