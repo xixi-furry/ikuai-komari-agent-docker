@@ -145,28 +145,8 @@ ikuai-komari-agent/
 ├── ikuai_komari_agent.py    # 主程序
 ├── ikuai_client.py          # iKuai API客户端
 ├── config.py                # 配置文件模板
-├── deploy.sh                # Linux部署脚本
-├── install.sh               # GitHub一键安装脚本
-├── README.md                # 详细说明文档
-├── .gitignore               # Git忽略文件
-└── GITHUB_README.md         # GitHub说明文档
-```
-
-## 🐛 故障排除
-
-### 服务启动失败
-
-```bash
-# 查看服务状态
-sudo systemctl status ikuai_Komari_agent
-
-# 查看详细日志
-sudo journalctl -u ikuai_Komari_agent --no-pager -l
-
-# 手动测试程序
-cd /opt/ikuai_Komari_agent
-source venv/bin/activate
-python ikuai_komari_agent.py --test
+├── install.sh               # 一键安装脚本
+└── README.md                # 说明文档
 ```
 
 ## 🔄 卸载
@@ -175,7 +155,7 @@ python ikuai_komari_agent.py --test
 
 ```bash
 # 运行部署脚本选择卸载选项
-sudo ./deploy.sh
+sudo ./install.sh
 ```
 
 ### 手动卸载
