@@ -10,8 +10,8 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# GitHub仓库信息
-GITHUB_REPO="your-username/ikuai-komari-agent"
+
+GITHUB_REPO="ZeroTwoDa/ikuai-komari-agent"
 GITHUB_BRANCH="main"
 DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${GITHUB_BRANCH}.zip"
 TEMP_DIR="/tmp/ikuai_komari_agent_install"
@@ -21,8 +21,6 @@ show_title() {
     clear
     echo -e "${BLUE}========================================${NC}"
     echo -e "${BLUE}    iKuai Komari 监控代理 v1.0${NC}"
-    echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}        GitHub一键安装脚本${NC}"
     echo -e "${BLUE}========================================${NC}"
     echo ""
 }
@@ -152,7 +150,7 @@ main_install() {
     
     echo ""
     echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}    GitHub一键安装完成!${NC}"
+    echo -e "${GREEN}    iKuai Komari 监控代理一键安装完成!${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo ""
     echo -e "${BLUE}服务管理命令:${NC}"
@@ -182,8 +180,6 @@ show_help() {
 # 显示版本信息
 show_version() {
     echo -e "${BLUE}iKuai Komari 监控代理 v1.0${NC}"
-    echo "GitHub一键安装脚本"
-    echo "支持系统: Debian/Ubuntu/CentOS/RHEL"
 }
 
 # 主程序
