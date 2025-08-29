@@ -87,8 +87,8 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/ikuai_Komari_agent
-ExecStart=/opt/ikuai_Komari_agent/venv/bin/python /opt/ikuai_Komari_agent/ikuai_komari_agent.py
+WorkingDirectory=/opt/ikuai_komari_agent
+ExecStart=/opt/ikuai_komari_agent/venv/bin/python /opt/ikuai_komari_agent/ikuai_komari_agent.py
 Restart=always
 RestartSec=5
 
