@@ -562,12 +562,9 @@ class IkuaiAgent:
                     self.ws.send(json.dumps(monitoring_data))
                 
                 current_time = time.time()
-                if current_time - self.last_basic_info_report >= self.info_report_interval * 60:
-                    basic_info = self.format_basic_info()
-                    if hasattr(self, 'ws') and self.ws and self.ws.sock and self.ws.sock.connected:
-                        self.ws.send(json.dumps(basic_info))
-                        logger.info("基础信息已通过WebSocket发送")
-                        self.last_basic_info_report = current_time
+                if current_time - self.last_basic_info_report >= self.info_report_interval:
+                    self.report_basic_info()
+                    self.last_basic_info_report = current_time
                 
                 if current_time - self.last_status_report >= 1800:
                     logger.info("✓ 监控程序运行正常，数据持续上报中...")
@@ -591,6 +588,9 @@ class IkuaiAgent:
                 return False
             
             self.start_websocket_connection()
+            
+            # 启动时立即上报基础信息
+            self.report_basic_info()
             
             self.monitoring_loop()
             
