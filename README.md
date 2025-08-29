@@ -21,7 +21,7 @@
 
 ```bash
 # 下载并运行一键安装脚本
-curl -fsSL https://raw.githubusercontent.com/your-username/ikuai-komari-agent/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/ZeroTwoDa/ikuai-komari-agent/main/install.sh | sudo bash
 ```
 - **iKuai地址**: 如 `http://192.168.1.1`
 - **iKuai用户名**: 如 `komari_user`
