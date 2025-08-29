@@ -299,29 +299,64 @@ cleanup() {
     echo -e "${GREEN}清理完成${NC}"
 }
 
-main_install() {
-    show_title
-    echo -e "${BLUE}开始一键安装iKuai Komari监控代理...${NC}"
-    echo ""
-    echo -e "${YELLOW}此脚本将:${NC}"
-    echo "1. 安装系统依赖"
-    echo "2. 从GitHub下载最新代码"
-    echo "3. 创建Python虚拟环境"
-    echo "4. 安装Python依赖"
-    echo "5. 配置iKuai和Komari连接"
-    echo "6. 创建systemd服务"
-    echo "7. 启动监控服务"
-    echo ""
-    echo -e "${YELLOW}注意: 按回车键取消安装，输入 y 或 Y 确认安装${NC}"
+uninstall_agent() {
+    echo -e "${BLUE}开始卸载iKuai Komari监控代理...${NC}"
     echo ""
     
-    read -p "确认开始安装? (输入 y 确认，回车取消): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}安装已取消${NC}"
-        exit 0
+    # 停止服务
+    if systemctl is-active --quiet "${SERVICE_NAME}"; then
+        echo -e "${BLUE}停止服务...${NC}"
+        systemctl stop "${SERVICE_NAME}"
+        echo -e "${GREEN}服务已停止${NC}"
     fi
     
+    # 禁用服务
+    if systemctl is-enabled --quiet "${SERVICE_NAME}"; then
+        echo -e "${BLUE}禁用服务...${NC}"
+        systemctl disable "${SERVICE_NAME}"
+        echo -e "${GREEN}服务已禁用${NC}"
+    fi
+    
+    # 删除服务文件
+    if [[ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]]; then
+        echo -e "${BLUE}删除服务文件...${NC}"
+        rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+        echo -e "${GREEN}服务文件已删除${NC}"
+    fi
+    
+    # 重新加载systemd
+    echo -e "${BLUE}重新加载systemd...${NC}"
+    systemctl daemon-reload
+    echo -e "${GREEN}systemd已重新加载${NC}"
+    
+    # 删除安装目录
+    if [[ -d "${INSTALL_PATH}" ]]; then
+        echo -e "${BLUE}删除安装目录...${NC}"
+        rm -rf "${INSTALL_PATH}"
+        echo -e "${GREEN}安装目录已删除${NC}"
+    fi
+    
+    echo ""
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}    iKuai Komari 监控代理卸载完成!${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo ""
+}
+
+show_menu() {
+    show_title
+    echo -e "${BLUE}默认安装到: ${INSTALL_PATH}${NC}"
+    echo ""
+    echo -e "${YELLOW}请选择操作:${NC}"
+    echo "1. 安装iKuai Komari 监控代理"
+    echo "2. 卸载iKuai Komari 监控代理"
+    echo "3. 退出"
+    echo ""
+}
+
+main_install() {
+    show_title
+    echo -e "${BLUE}开始安装iKuai Komari监控代理...${NC}"
     echo ""
     
     install_dependencies
@@ -331,7 +366,7 @@ main_install() {
     
     echo ""
     echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}    iKuai Komari 监控代理一键安装完成!${NC}"
+    echo -e "${GREEN}    iKuai Komari 监控代理安装完成!${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo ""
     echo -e "${BLUE}安装路径: ${INSTALL_PATH}${NC}"
@@ -378,7 +413,24 @@ main() {
         "")
             check_root
             check_system
-            main_install
+            show_menu
+            read -p "请输入选择 (1-3): " choice
+            case $choice in
+                1)
+                    main_install
+                    ;;
+                2)
+                    uninstall_agent
+                    ;;
+                3)
+                    echo -e "${BLUE}退出安装程序${NC}"
+                    exit 0
+                    ;;
+                *)
+                    echo -e "${RED}无效选择，请重新运行脚本${NC}"
+                    exit 1
+                    ;;
+            esac
             ;;
         *)
             echo -e "${RED}错误: 未知选项 $1${NC}"
