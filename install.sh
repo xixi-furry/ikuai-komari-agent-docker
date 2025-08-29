@@ -413,24 +413,28 @@ main() {
         "")
             check_root
             check_system
-            show_menu
-            read -p "请输入选择 (1-3): " choice
-            case $choice in
-                1)
-                    main_install
-                    ;;
-                2)
-                    uninstall_agent
-                    ;;
-                3)
-                    echo -e "${BLUE}退出安装程序${NC}"
-                    exit 0
-                    ;;
-                *)
-                    echo -e "${RED}无效选择，请重新运行脚本${NC}"
-                    exit 1
-                    ;;
-            esac
+            while true; do
+                show_menu
+                read -p "请输入选择 (1-3): " choice
+                case $choice in
+                    1)
+                        main_install
+                        break
+                        ;;
+                    2)
+                        uninstall_agent
+                        break
+                        ;;
+                    3)
+                        echo -e "${BLUE}退出安装程序${NC}"
+                        exit 0
+                        ;;
+                    *)
+                        echo -e "${RED}无效选择: '$choice'，请输入 1、2 或 3${NC}"
+                        echo ""
+                        ;;
+                esac
+            done
             ;;
         *)
             echo -e "${RED}错误: 未知选项 $1${NC}"
