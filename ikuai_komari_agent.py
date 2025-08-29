@@ -15,6 +15,7 @@ import psutil
 import argparse
 import signal
 import sys
+import ipaddress
 from typing import Dict, Any, Optional
 import websocket
 import requests
@@ -40,6 +41,7 @@ class IkuaiAgent:
         self.running = False
         self.ws = None
         self.last_basic_info_report = 0
+        self.last_status_report = 0
         
         # 设置日志
         self.setup_logging()
@@ -48,6 +50,38 @@ class IkuaiAgent:
         self.ikuai_client = IkuaiClient()
         
         logger.info("iKuai监控代理初始化完成")
+    
+    def is_private_ip(self, ip: str) -> bool:
+        """判断IP是否为内网IP"""
+        try:
+            ip_obj = ipaddress.ip_address(ip)
+            return ip_obj.is_private
+        except:
+            return False
+    
+    def get_public_ip_from_ikuai(self) -> str:
+        """从iKuai路由器获取公网IP"""
+        try:
+            interface_info = self.ikuai_client.get_interface_info()
+            if interface_info:
+                iface_check = interface_info.get("iface_check", [])
+                for iface in iface_check:
+                    ip_addr = iface.get("ip_addr", "")
+                    if ip_addr and not self.is_private_ip(ip_addr):
+                        logger.debug(f"从WAN口获取到公网IP: {ip_addr}")
+                        return ip_addr
+                
+                iface_stream = interface_info.get("iface_stream", [])
+                for iface in iface_stream:
+                    ip_addr = iface.get("ip_addr", "")
+                    if ip_addr and not self.is_private_ip(ip_addr):
+                        logger.debug(f"从接口流获取到公网IP: {ip_addr}")
+                        return ip_addr
+            
+            return ""
+        except Exception as e:
+            logger.error(f"获取iKuai公网IP失败: {e}")
+            return ""
     
     def setup_logging(self):
         """设置日志"""
@@ -166,44 +200,54 @@ class IkuaiAgent:
         ikuai_data = self.get_ikuai_data()
         local_info = self.get_local_system_info()
         
-        # 获取IP地址
-        try:
-            hostname = socket.gethostname()
-            ipv4 = socket.gethostbyname(hostname)
-        except:
-            ipv4 = "127.0.0.1"
+        ipv4 = self.get_public_ip_from_ikuai()
         
-        # 从ikuai数据中提取信息
+        if not ipv4:
+            try:
+                hostname = socket.gethostname()
+                ipv4 = socket.gethostbyname(hostname)
+            except:
+                ipv4 = "127.0.0.1"
+        
         hw_info = ikuai_data.get("hardware", {})
         sys_info = ikuai_data.get("system", {})
         verinfo = sys_info.get("verinfo", {})
         
-        # 获取ikuai版本信息
         ikuai_version = verinfo.get("verstring", "")
         if ikuai_version:
             os_info = f"iKuai ({ikuai_version})"
         else:
             os_info = "iKuai"
         
-        # 修复内存数值：ikuai返回的是MB，需要转换为字节
         mem_total_bytes = 0
-        if hw_info.get("memory"):
-            mem_total_bytes = hw_info.get("memory") * 1024 * 1024  # MB转字节
-        else:
-            mem_total_bytes = local_info.get("memory", {}).get("mem_total", 0)
+        try:
+            homepage_data = self.ikuai_client.get_homepage_stats()
+            if homepage_data and "sysstat" in homepage_data:
+                memory_data = homepage_data["sysstat"].get("memory", {})
+                mem_total_kb = memory_data.get("total", 0)
+                mem_total_bytes = mem_total_kb * 1024
+                logger.debug(f"从iKuai API获取内存: {mem_total_kb}KB = {mem_total_bytes}字节")
+            else:
+                if hw_info.get("memory"):
+                    mem_total_bytes = hw_info.get("memory") * 1024 * 1024
+                else:
+                    mem_total_bytes = local_info.get("memory", {}).get("mem_total", 0)
+        except Exception as e:
+            logger.error(f"获取内存数据失败: {e}")
+            if hw_info.get("memory"):
+                mem_total_bytes = hw_info.get("memory") * 1024 * 1024
+            else:
+                mem_total_bytes = local_info.get("memory", {}).get("mem_total", 0)
         
-        # 获取ikuai硬盘容量
         disk_total_bytes = 0
         hdd_info = hw_info.get("hdd", "")
         if hdd_info and "GB" in hdd_info:
             try:
-                # 从 "ATA SanDisk SDSA6MM- 006 (14.91GB)" 提取 "14.91"
                 import re
                 match = re.search(r'\((\d+\.?\d*)GB\)', hdd_info)
                 if match:
                     disk_gb = float(match.group(1))
-                    disk_total_bytes = int(disk_gb * 1024 * 1024 * 1024)  # GB转字节
-                    logger.info(f"ikuai硬盘容量: {disk_gb}GB ({disk_total_bytes} bytes)")
+                    disk_total_bytes = int(disk_gb * 1024 * 1024 * 1024)
             except:
                 disk_total_bytes = local_info.get("disk", {}).get("disk_total", 0)
         else:
@@ -232,7 +276,6 @@ class IkuaiAgent:
         ikuai_data = self.get_ikuai_data()
         local_info = self.get_local_system_info()
         
-        # CPU使用率
         cpu_usage = 0
         sys_stats = ikuai_data.get("system", {})
         if sys_stats.get("cpu"):
@@ -244,57 +287,118 @@ class IkuaiAgent:
         else:
             cpu_usage = psutil.cpu_percent(interval=1)
         
-        # 内存信息 - 修复数值问题
-        hw_info = ikuai_data.get("hardware", {})
-        memory = sys_stats.get("memory", {})
+        process_count = 0
+        try:
+            homepage_data = self.ikuai_client.get_homepage_stats()
+            if homepage_data and "sysstat" in homepage_data:
+                sysstat = homepage_data["sysstat"]
+                if sysstat.get("cputemp"):
+                    cpu_temp_values = sysstat["cputemp"]
+                    if cpu_temp_values and len(cpu_temp_values) > 0:
+                        process_count = int(float(cpu_temp_values[0]))
+        except Exception as e:
+            logger.error(f"获取CPU温度失败: {e}")
+            process_count = 0
         
-        if hw_info.get("memory") and memory:
-            # 使用硬件信息中的内存大小作为基准（MB）
-            mem_total_mb = hw_info.get("memory", 0)  # 3514 MB
-            mem_used_percent = memory.get("used", "0%").strip('%')
-            try:
-                mem_used_percent = float(mem_used_percent)
-                mem_total_bytes = mem_total_mb * 1024 * 1024  # MB转字节
-                mem_used_bytes = int(mem_total_bytes * mem_used_percent / 100)
-            except:
-                mem_total_bytes = 0
-                mem_used_bytes = 0
-        else:
-            mem_info = local_info.get("memory", {})
-            mem_total_bytes = mem_info.get("mem_total", 0)
-            mem_used_bytes = mem_info.get("mem_used", 0)
+        try:
+            homepage_data = self.ikuai_client.get_homepage_stats()
+            if homepage_data and "sysstat" in homepage_data:
+                memory_data = homepage_data["sysstat"].get("memory", {})
+                mem_total_kb = memory_data.get("total", 0)
+                mem_used_percent = memory_data.get("used", "0%").strip('%')
+                
+                try:
+                    mem_used_percent = float(mem_used_percent)
+                    mem_total_bytes = mem_total_kb * 1024
+                    mem_used_bytes = int(mem_total_bytes * mem_used_percent / 100)
+                    
+                    logger.debug(f"内存数据: 总内存={mem_total_kb}KB, 使用率={mem_used_percent}%, 总字节={mem_total_bytes}, 已用字节={mem_used_bytes}")
+                except Exception as e:
+                    logger.error(f"内存数据计算错误: {e}")
+                    mem_total_bytes = 0
+                    mem_used_bytes = 0
+            else:
+                mem_info = local_info.get("memory", {})
+                mem_total_bytes = mem_info.get("mem_total", 0)
+                mem_used_bytes = mem_info.get("mem_used", 0)
+        except Exception as e:
+            logger.error(f"获取内存数据失败: {e}")
+            mem_total_bytes = 3 * 1024 * 1024 * 1024
+            mem_used_bytes = int(mem_total_bytes * 0.2)
         
-        # 网络信息
-        net_stats = ikuai_data.get("network", {})
-        if net_stats:
-            net_up = net_stats.get("upload", 0)
-            net_down = net_stats.get("download", 0)
-            net_total_up = net_stats.get("total_up", 0)
-            net_total_down = net_stats.get("total_down", 0)
-            connections = net_stats.get("connect_num", 0)
-        else:
-            net_info = local_info.get("network", {})
-            net_up = net_info.get("network_up", 0)
-            net_down = net_info.get("network_down", 0)
-            net_total_up = net_up
-            net_total_down = net_down
-            connections = 0
+        try:
+            wan_net_stats = self.ikuai_client.get_wan_network_stats()
+            if wan_net_stats:
+                net_up = wan_net_stats.get("upload", 0)
+                net_down = wan_net_stats.get("download", 0)
+                net_total_up = wan_net_stats.get("total_up", net_up)
+                net_total_down = wan_net_stats.get("total_down", net_down)
+                
+                net_up_rate = int(net_up / 3)
+                net_down_rate = int(net_down / 3)
+                
+                logger.debug(f"WAN口网络数据: 上传={net_up}, 下载={net_down}, 总上传={net_total_up}, 总下载={net_total_down}")
+            else:
+                net_stats = ikuai_data.get("network", {})
+                if net_stats:
+                    net_up = net_stats.get("upload", 0)
+                    net_down = net_stats.get("download", 0)
+                    net_total_up = net_stats.get("total_up", net_up)
+                    net_total_down = net_stats.get("total_down", net_down)
+                    
+                    net_up_rate = int(net_up / 3)
+                    net_down_rate = int(net_down / 3)
+                else:
+                    net_info = local_info.get("network", {})
+                    net_up = net_info.get("network_up", 0)
+                    net_down = net_info.get("network_down", 0)
+                    net_total_up = net_up
+                    net_total_down = net_down
+                    net_up_rate = 0
+                    net_down_rate = 0
+        except Exception as e:
+            logger.error(f"获取WAN口网络数据失败: {e}")
+            net_stats = ikuai_data.get("network", {})
+            if net_stats:
+                net_up = net_stats.get("upload", 0)
+                net_down = net_stats.get("download", 0)
+                net_total_up = net_stats.get("total_up", net_up)
+                net_total_down = net_stats.get("total_down", net_down)
+                
+                net_up_rate = int(net_up / 3)
+                net_down_rate = int(net_down / 3)
+            else:
+                net_info = local_info.get("network", {})
+                net_up = net_info.get("network_up", 0)
+                net_down = net_info.get("network_down", 0)
+                net_total_up = net_up
+                net_total_down = net_down
+                net_up_rate = 0
+                net_down_rate = 0
         
-        # 磁盘信息 - 使用ikuai磁盘管理API获取真实使用情况
+        try:
+            connection_stats = self.ikuai_client.get_connection_stats()
+            if connection_stats:
+                tcp_connections = connection_stats.get("tcp", connection_stats.get("total", 0))
+                udp_connections = connection_stats.get("udp", 0)
+            else:
+                tcp_connections = 0
+                udp_connections = 0
+        except:
+            tcp_connections = 0
+            udp_connections = 0
+        
         disk_info = local_info.get("disk", {})
         
-        # 获取ikuai磁盘使用信息
         try:
             ikuai_disk_stats = self.ikuai_client.get_disk_usage_stats()
             if ikuai_disk_stats:
-                # 如果获取到ikuai磁盘信息，使用ikuai的真实数据
                 disk_info = {
                     "disk_total": ikuai_disk_stats.get("total", 0),
                     "disk_used": ikuai_disk_stats.get("used", 0),
                     "disk_free": ikuai_disk_stats.get("available", 0)
                 }
             else:
-                # 如果获取失败，使用硬件信息中的硬盘容量作为备用
                 hw_info = ikuai_data.get("hardware", {})
                 hdd_info = hw_info.get("hdd", "")
                 ikuai_disk_total = 0
@@ -305,15 +409,13 @@ class IkuaiAgent:
                         match = re.search(r'\((\d+\.?\d*)GB\)', hdd_info)
                         if match:
                             disk_gb = float(match.group(1))
-                            ikuai_disk_total = int(disk_gb * 1024 * 1024 * 1024)  # GB转字节
-                            logger.info(f"ikuai硬盘容量: {disk_gb}GB ({ikuai_disk_total} bytes)")
+                            ikuai_disk_total = int(disk_gb * 1024 * 1024 * 1024)
                     except:
                         ikuai_disk_total = disk_info.get("disk_total", 0)
                 else:
                     ikuai_disk_total = disk_info.get("disk_total", 0)
                 
-                # 使用估算的磁盘使用量（假设使用20%）
-                ikuai_disk_used = int(ikuai_disk_total * 0.2)  # 估算20%使用率
+                ikuai_disk_used = int(ikuai_disk_total * 0.2)
                 
                 disk_info = {
                     "disk_total": ikuai_disk_total,
@@ -322,10 +424,8 @@ class IkuaiAgent:
                 }
         except Exception as e:
             logger.error(f"获取ikuai磁盘信息失败: {e}")
-            # 使用本地磁盘信息作为备用
             pass
         
-        # 获取负载信息 - 尝试从首页统计信息获取或估算
         load1, load5, load15 = 0, 0, 0
         try:
             load_stats = self.ikuai_client.get_load_from_homepage()
@@ -339,12 +439,10 @@ class IkuaiAgent:
             logger.error(f"获取负载信息异常: {e}")
             pass
         
-        # 获取ikuai运行时间
         ikuai_uptime = 0
         try:
             ikuai_uptime = self.ikuai_client.get_uptime() or 0
         except:
-            # 如果获取失败，使用本地运行时间作为备用
             ikuai_uptime = int(time.time() - psutil.boot_time())
         
         monitoring_data = {
@@ -369,18 +467,18 @@ class IkuaiAgent:
                 "used": disk_info.get("disk_used", 0)
             },
             "network": {
-                "up": net_up,
-                "down": net_down,
+                "up": net_up_rate,
+                "down": net_down_rate,
                 "totalUp": net_total_up,
                 "totalDown": net_total_down
             },
             "connections": {
-                "tcp": connections,
-                "udp": 0
+                "tcp": tcp_connections,
+                "udp": udp_connections
             },
             "uptime": ikuai_uptime,
-            "process": len(psutil.pids()),
-            "message": f"ikuai监控 - CPU: {cpu_usage:.1f}%, 内存: {mem_used_bytes/1024/1024/1024:.1f}GB, 连接数: {connections}"
+            "process": process_count,
+            "message": f"ikuai监控 - CPU: {cpu_usage:.1f}%, 内存: {mem_used_bytes/1024/1024/1024:.1f}GB, 连接数: {tcp_connections}"
         }
         
         return monitoring_data
@@ -432,7 +530,8 @@ class IkuaiAgent:
     def start_websocket_connection(self):
         """启动WebSocket连接"""
         try:
-            ws_url = f"{self.endpoint.replace('http', 'ws')}/api/clients/report?token={self.token}"
+            ws_url = f"{self.endpoint.replace('https', 'wss').replace('http', 'ws')}/api/clients/report?token={self.token}"
+            logger.info(f"尝试连接WebSocket: {ws_url}")
             
             self.ws = websocket.WebSocketApp(
                 ws_url,
@@ -442,7 +541,8 @@ class IkuaiAgent:
                 on_close=self.on_websocket_close
             )
             
-            self.ws.run_forever()
+            self.ws_thread = threading.Thread(target=self.ws.run_forever, daemon=True)
+            self.ws_thread.start()
             
         except Exception as e:
             logger.error(f"WebSocket连接失败: {e}")
@@ -456,19 +556,23 @@ class IkuaiAgent:
         
         while self.running:
             try:
-                # 获取并上报监控数据
                 monitoring_data = self.format_monitoring_data()
                 
-                # 通过WebSocket发送数据
                 if hasattr(self, 'ws') and self.ws and self.ws.sock and self.ws.sock.connected:
                     self.ws.send(json.dumps(monitoring_data))
                 
-                # 检查是否需要上报基础信息
                 current_time = time.time()
                 if current_time - self.last_basic_info_report >= self.info_report_interval * 60:
-                    self.report_basic_info()
+                    basic_info = self.format_basic_info()
+                    if hasattr(self, 'ws') and self.ws and self.ws.sock and self.ws.sock.connected:
+                        self.ws.send(json.dumps(basic_info))
+                        logger.info("基础信息已通过WebSocket发送")
+                        self.last_basic_info_report = current_time
                 
-                # 等待下一次监控
+                if current_time - self.last_status_report >= 1800:
+                    logger.info("✓ 监控程序运行正常，数据持续上报中...")
+                    self.last_status_report = current_time
+                
                 time.sleep(self.interval)
                 
             except Exception as e:
@@ -482,22 +586,15 @@ class IkuaiAgent:
         try:
             logger.info("启动iKuai监控代理...")
             
-            # 登录ikuai
             if not self.ikuai_client.login():
                 logger.error("ikuai登录失败，程序退出")
                 return False
             
-            # 上报基础信息
-            self.report_basic_info()
-            
-            # 启动WebSocket连接
             self.start_websocket_connection()
             
-            # 启动监控循环
             self.monitoring_loop()
             
             logger.info("✓ iKuai监控代理启动成功！")
-            logger.info("✓ 基础信息已上报到Komari服务器")
             logger.info("✓ WebSocket连接已建立")
             logger.info("✓ 开始实时监控iKuai路由器数据...")
             
@@ -524,11 +621,9 @@ def main():
     args = parser.parse_args()
     
     try:
-        # 创建监控代理实例（使用配置文件中的默认值）
         agent = IkuaiAgent()
         
         if args.test:
-            # 测试模式
             print("=== 测试模式 ===")
             print("基础信息:")
             basic_info = agent.format_basic_info()

@@ -198,8 +198,51 @@ class IkuaiClient:
 
     def get_network_stats(self) -> Optional[Dict]:
         """获取网络统计信息"""
-        result = self.call_api("sysstat", "show", {"TYPE": "stream"})
-        return result["Data"].get("sysstat", {}).get("stream", {}) if result and "Data" in result else None
+        try:
+            # 从首页统计信息获取网络数据
+            result = self.call_api("homepage", "show", {"TYPE": "sysstat,ac_status"})
+            if result and "Data" in result:
+                sysstat = result["Data"].get("sysstat", {})
+                stream = sysstat.get("stream", {})
+                
+                # 返回网络统计信息
+                return {
+                    "upload": stream.get("upload", 0),
+                    "download": stream.get("download", 0),
+                    "total_up": stream.get("total_up", 0),
+                    "total_down": stream.get("total_down", 0),
+                    "connect_num": stream.get("connect_num", 0)
+                }
+            
+            # 如果上面的方法失败，尝试原来的API
+            result = self.call_api("sysstat", "show", {"TYPE": "stream"})
+            return result["Data"].get("sysstat", {}).get("stream", {}) if result and "Data" in result else None
+        except Exception as e:
+            logger.error(f"获取网络统计异常: {e}")
+            return None
+    
+    def get_connection_stats(self) -> Optional[Dict]:
+        """获取连接数统计信息"""
+        try:
+            # 从首页统计信息获取连接数
+            result = self.call_api("homepage", "show", {"TYPE": "sysstat,ac_status"})
+            if result and "Data" in result:
+                sysstat = result["Data"].get("sysstat", {})
+                stream = sysstat.get("stream", {})
+                
+                # 从stream字段获取连接数
+                connect_num = stream.get("connect_num", 0)
+                
+                return {
+                    "tcp": connect_num,  # 总连接数作为TCP连接数
+                    "udp": 0,  # UDP连接数默认为0
+                    "total": connect_num
+                }
+            
+            return None
+        except Exception as e:
+            logger.error(f"获取连接数统计异常: {e}")
+            return None
 
     def get_cpu_memory_stats(self) -> Optional[Dict]:
         """获取CPU和内存统计信息"""
@@ -307,7 +350,7 @@ class IkuaiClient:
                 sysstat = homepage_data["sysstat"]
                 
                 # 检查是否有负载相关字段
-                logger.info(f"首页统计信息字段: {list(sysstat.keys())}")
+                logger.debug(f"首页统计信息字段: {list(sysstat.keys())}")
                 
                 # 如果有load字段，直接使用
                 if "load" in sysstat:
@@ -319,7 +362,7 @@ class IkuaiClient:
                 # 例如从CPU使用率估算负载
                 if "cpu" in sysstat:
                     cpu_data = sysstat["cpu"]
-                    logger.info(f"CPU数据: {cpu_data}")
+                    logger.debug(f"CPU数据: {cpu_data}")
                     
                     # 简单的负载估算：基于CPU使用率
                     try:
@@ -355,4 +398,56 @@ class IkuaiClient:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """上下文管理器出口"""
-        self.logout() 
+        self.logout()
+    
+    def get_interface_info(self) -> Optional[Dict]:
+        try:
+            result = self.call_api("monitor_iface", "show", {"TYPE": "iface_check,iface_stream"})
+            if result and "Data" in result:
+                return result["Data"]
+            return None
+        except Exception as e:
+            logger.error(f"获取接口信息异常: {e}")
+            return None
+    
+    def get_wan_network_stats(self) -> Optional[Dict]:
+        try:
+            result = self.call_api("monitor_iface", "show", {"TYPE": "iface_check,iface_stream"})
+            if result and "Data" in result:
+                data = result["Data"]
+                iface_stream = data.get("iface_stream", [])
+                
+                for iface in iface_stream:
+                    interface_name = iface.get("interface", "")
+                    if interface_name.startswith("wan"):
+                        return {
+                            "upload": iface.get("upload", 0),
+                            "download": iface.get("download", 0),
+                            "total_up": iface.get("total_up", 0),
+                            "total_down": iface.get("total_down", 0),
+                            "connect_num": iface.get("connect_num", 0)
+                        }
+                
+                for iface in iface_stream:
+                    ip_addr = iface.get("ip_addr", "")
+                    if ip_addr and not self._is_private_ip(ip_addr):
+                        return {
+                            "upload": iface.get("upload", 0),
+                            "download": iface.get("download", 0),
+                            "total_up": iface.get("total_up", 0),
+                            "total_down": iface.get("total_down", 0),
+                            "connect_num": iface.get("connect_num", 0)
+                        }
+            
+            return None
+        except Exception as e:
+            logger.error(f"获取WAN口网络统计异常: {e}")
+            return None
+    
+    def _is_private_ip(self, ip: str) -> bool:
+        try:
+            import ipaddress
+            ip_obj = ipaddress.ip_address(ip)
+            return ip_obj.is_private
+        except:
+            return False 
