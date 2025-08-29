@@ -16,9 +16,9 @@ IKUAI_CONFIG = {
 KOMARI_CONFIG = {
     "endpoint": "https://komari.server.com",
     "token": "komari_token",
-    "websocket_interval": 1.0,
-    "basic_info_interval": 5,  # 分钟
-    "ignore_unsafe_cert": False
+    "websocket_interval": 1.0, # 监控数据上报间隔（默认 1.0秒）
+    "basic_info_interval": 5,  # 基础信息上报间隔（默认 5分钟）
+    "ignore_unsafe_cert": False # 忽略不安全的 SSL 证书
 }
 
 # 日志配置
@@ -27,4 +27,5 @@ LOGGING_CONFIG = {
     "file": "ikuai_agent.log",
     "max_bytes": 10485760,  # 10MB
     "backup_count": 3  # 备份文件数量
+
 } 
