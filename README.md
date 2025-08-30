@@ -13,7 +13,6 @@
 - 🔐 智能会话管理和自动重连
 - 📝 优化的日志输出
 - 🛡️ 完善的错误处理
-- 🚀 一键安装部署
 
 ## 🚀 快速开始
 
@@ -27,7 +26,7 @@
 
 - **iKuai地址**: 如 `http://192.168.1.1`
 - **iKuai用户名**: 如 `komari_user`
-- **iKuai密码**: 输入密码（不会显示）
+- **iKuai密码**: 如 `komari_password`
 - **Komari服务器地址**: 如 `https://komari.server.com`
 - **Komari认证令牌**: 输入认证令牌
 
