@@ -2,14 +2,8 @@ version: '3.8'
 
 services:
   ikuai-komari-agent:
-    # 选择一：使用预构建镜像（推荐，更快）
-    # image: ghcr.io/yourusername/ikuai-komari-agent-docker:latest
-    
-    # 选择二：本地构建（开发或自定义修改时使用）
-    build:
-      context: .
-      dockerfile: Dockerfile
-    
+    # 使用GitHub Actions自动构建的预构建镜像
+    image: ghcr.io/yourusername/ikuai-komari-agent-docker:latest
     container_name: ikuai-komari-agent
     restart: unless-stopped
     

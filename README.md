@@ -16,7 +16,11 @@
 
 ## 🚀 快速开始
 
+> **🚀 超级简单部署：** 如果你只想快速使用，查看 [3分钟快速部署指南](QUICK-START.md)
+
 ### 方式一：Docker 部署（推荐）
+
+#### 选择 A：使用预构建镜像（最简单，推荐）
 
 ```bash
 # 1. 复制配置文件
@@ -25,7 +29,23 @@ cp env.example .env
 # 2. 编辑配置文件，设置你的路由器和服务器信息
 nano .env
 
-# 3. 启动服务
+# 3. 使用预构建镜像启动服务
+docker-compose -f docker-compose.prebuilt.yml up -d
+
+# 4. 查看运行状态
+docker-compose -f docker-compose.prebuilt.yml logs -f
+```
+
+#### 选择 B：本地构建镜像（开发或自定义时使用）
+
+```bash
+# 1. 复制配置文件
+cp env.example .env
+
+# 2. 编辑配置文件，设置你的路由器和服务器信息  
+nano .env
+
+# 3. 本地构建并启动服务
 docker-compose up -d
 
 # 4. 查看运行状态
@@ -51,6 +71,34 @@ docker-compose logs -f
 ## 🔧 服务管理
 
 ### Docker 部署管理
+
+#### 使用预构建镜像（推荐）
+
+```bash
+# 查看容器状态
+docker-compose -f docker-compose.prebuilt.yml ps
+
+# 启动服务
+docker-compose -f docker-compose.prebuilt.yml up -d
+
+# 停止服务
+docker-compose -f docker-compose.prebuilt.yml down
+
+# 重启服务
+docker-compose -f docker-compose.prebuilt.yml restart
+
+# 查看实时日志
+docker-compose -f docker-compose.prebuilt.yml logs -f
+
+# 更新到最新镜像
+docker-compose -f docker-compose.prebuilt.yml pull
+docker-compose -f docker-compose.prebuilt.yml up -d
+
+# 进入容器调试
+docker-compose -f docker-compose.prebuilt.yml exec ikuai-komari-agent bash
+```
+
+#### 本地构建镜像
 
 ```bash
 # 查看容器状态
@@ -184,11 +232,54 @@ ikuai-komari-agent-docker/
 ├── config.py                # 配置文件（支持环境变量）
 ├── requirements.txt         # Python依赖包
 ├── Dockerfile              # Docker镜像构建文件
-├── docker-compose.yml      # Docker编排文件
+├── docker-compose.yml      # Docker编排文件（本地构建）
+├── docker-compose.prebuilt.yml # Docker编排文件（预构建镜像）
 ├── .dockerignore          # Docker构建忽略文件
+├── .github/workflows/      # GitHub Actions工作流
+│   └── docker-build.yml   # 自动构建Docker镜像
 ├── env.example            # 环境变量配置模板
+├── QUICK-START.md         # 快速部署指南
 └── README.md              # 说明文档
 ```
+
+## 🏗️ 自动构建镜像
+
+### GitHub Actions 自动构建
+
+本项目配置了 GitHub Actions 工作流，会在以下情况自动构建 Docker 镜像：
+
+- **推送到主分支**：构建 `latest` 标签
+- **发布新版本**：构建版本标签（如 `v1.0.0`）
+- **多平台支持**：同时构建 `linux/amd64` 和 `linux/arm64`
+
+### 镜像仓库
+
+构建的镜像会推送到 GitHub Container Registry：
+
+```
+ghcr.io/yourusername/ikuai-komari-agent-docker:latest
+ghcr.io/yourusername/ikuai-komari-agent-docker:v1.0.0
+```
+
+### 使用预构建镜像的优势
+
+- ✅ **更快部署**：无需本地构建，直接拉取使用
+- ✅ **多平台支持**：支持 x86_64 和 ARM64 架构
+- ✅ **自动更新**：跟随项目更新自动构建新版本
+- ✅ **节省资源**：减少本地构建时间和磁盘占用
+
+### 设置说明
+
+如果你 fork 了这个项目，需要：
+
+1. **更新镜像名称**：修改 `docker-compose.prebuilt.yml` 中的镜像名
+   ```yaml
+   image: ghcr.io/your-github-username/ikuai-komari-agent-docker:latest
+   ```
+
+2. **启用 GitHub Actions**：确保仓库的 Actions 功能已启用
+
+3. **设置权限**：GitHub Actions 需要写入包的权限（默认已配置）
 
 ## 🔍 故障排除
 
