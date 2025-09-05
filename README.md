@@ -16,11 +16,29 @@
 
 ## 🚀 快速开始
 
-### 安装文档
+### 方式一：Docker 部署（推荐）
+
+```bash
+# 1. 复制配置文件
+cp env.example .env
+
+# 2. 编辑配置文件，设置你的路由器和服务器信息
+nano .env
+
+# 3. 启动服务
+docker-compose up -d
+
+# 4. 查看运行状态
+docker-compose logs -f
+```
+
+### 方式二：传统安装
+
+#### 安装文档
 
 [安装文档](https://github.com/ZeroTwoDa/ikuai-komari-agent/blob/main/Install.md)
 
-### 配置信息
+#### 配置信息
 
 安装过程中需要输入以下信息：
 
@@ -32,7 +50,32 @@
 
 ## 🔧 服务管理
 
-安装完成后，可以使用以下命令管理服务：
+### Docker 部署管理
+
+```bash
+# 查看容器状态
+docker-compose ps
+
+# 启动服务
+docker-compose up -d
+
+# 停止服务
+docker-compose down
+
+# 重启服务
+docker-compose restart
+
+# 查看实时日志
+docker-compose logs -f
+
+# 重新构建并启动
+docker-compose up --build -d
+
+# 进入容器调试
+docker-compose exec ikuai-komari-agent bash
+```
+
+### 传统部署管理
 
 ```bash
 # 查看服务状态
@@ -84,19 +127,111 @@ sudo tail -f /opt/ikuai_Komari_agent/ikuai_agent.log
    - 在 **页面权限** 列表中，只勾选 **访问** 列
    - 确保 **修改** 列全部不勾选，以限制代理程序只能读取数据
 
+## ⚙️ 环境变量配置
 
+### 核心配置项
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `IKUAI_BASE_URL` | `http://192.168.1.1` | iKuai路由器管理地址 |
+| `IKUAI_USERNAME` | `admin` | iKuai登录用户名 |
+| `IKUAI_PASSWORD` | `admin` | iKuai登录密码 |
+| `KOMARI_ENDPOINT` | `https://komari.server.com` | Komari服务器地址 |
+| `KOMARI_TOKEN` | `your_token_here` | Komari认证令牌 |
+
+### 可选配置项
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `IKUAI_TIMEOUT` | `10` | iKuai请求超时时间(秒) |
+| `KOMARI_WEBSOCKET_INTERVAL` | `1.0` | WebSocket数据上报间隔(秒) |
+| `KOMARI_BASIC_INFO_INTERVAL` | `5` | 基础信息上报间隔(分钟) |
+| `KOMARI_IGNORE_UNSAFE_CERT` | `False` | 忽略不安全的SSL证书 |
+
+### 日志配置项
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `LOG_LEVEL` | `WARNING` | 日志级别 (DEBUG/INFO/WARNING/ERROR) |
+| `LOG_FILE` | `ikuai_agent.log` | 日志文件名 |
+| `LOG_MAX_BYTES` | `10485760` | 单个日志文件最大大小(字节) |
+| `LOG_BACKUP_COUNT` | `3` | 日志备份文件数量 |
+
+### 配置示例
+
+```bash
+# .env 文件示例
+IKUAI_BASE_URL=http://192.168.1.1
+IKUAI_USERNAME=monitor_user
+IKUAI_PASSWORD=your_secure_password
+KOMARI_ENDPOINT=https://your-komari-server.com
+KOMARI_TOKEN=your_actual_token
+
+# 可选：如果使用自签名SSL证书
+KOMARI_IGNORE_UNSAFE_CERT=True
+
+# 可选：调整上报频率
+KOMARI_WEBSOCKET_INTERVAL=2.0
+KOMARI_BASIC_INFO_INTERVAL=10
+```
 
 ## 🗂️ 项目结构
 
 ```
-ikuai-komari-agent/
+ikuai-komari-agent-docker/
 ├── ikuai_komari_agent.py    # 主程序
 ├── ikuai_client.py          # iKuai API客户端
-├── config.py                # 配置文件模板
-└── README.md                # 说明文档
+├── config.py                # 配置文件（支持环境变量）
+├── requirements.txt         # Python依赖包
+├── Dockerfile              # Docker镜像构建文件
+├── docker-compose.yml      # Docker编排文件
+├── .dockerignore          # Docker构建忽略文件
+├── env.example            # 环境变量配置模板
+└── README.md              # 说明文档
 ```
 
+## 🔍 故障排除
+
+### Docker 部署问题
+
+1. **容器无法启动**：
+   ```bash
+   # 查看容器状态和错误
+   docker-compose ps
+   docker-compose logs ikuai-komari-agent
+   ```
+
+2. **无法连接iKuai路由器**：
+   - 检查 `IKUAI_BASE_URL` 配置是否正确
+   - 确认用户名密码是否正确
+   - 检查网络连通性：`ping 192.168.1.1`
+
+3. **无法连接Komari服务器**：
+   - 检查 `KOMARI_ENDPOINT` 和 `KOMARI_TOKEN` 配置
+   - 如果使用自签名证书，设置 `KOMARI_IGNORE_UNSAFE_CERT=True`
+
+4. **权限问题**：
+   ```bash
+   # 检查并修复日志目录权限
+   sudo chown -R $(id -u):$(id -g) ./logs
+   ```
+
 ### 手动卸载
+
+#### Docker 部署卸载
+
+```bash
+# 停止并移除容器
+docker-compose down
+
+# 删除镜像（可选）
+docker rmi ikuai-komari-agent-docker_ikuai-komari-agent
+
+# 清理未使用的Docker资源
+docker system prune -f
+```
+
+#### 传统部署卸载
 
 ```bash
 # 停止服务
