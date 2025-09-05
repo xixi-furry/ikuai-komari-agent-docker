@@ -110,7 +110,7 @@ jobs:
 
     - name: Upload deployment files
       if: github.event_name != 'pull_request'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: deployment-files
         path: deploy/
